@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>日報管理システム</title>
+    <!-- Firebase SDK -->
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+      import { getFirestore, doc, getDoc, setDoc, collection, getDocs, addDoc, deleteDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyC3CLq2Uh4PL7BSvvGys0ANM52e3czA1zU",
+        authDomain: "nippo-app-394e6.firebaseapp.com",
+        projectId: "nippo-app-394e6",
+        storageBucket: "nippo-app-394e6.firebasestorage.app",
+        messagingSenderId: "210120667270",
+        appId: "1:210120667270:web:fc2bd1186312db453a2107"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      window._db = db;
+      window._fs = { doc, getDoc, setDoc, collection, getDocs, addDoc, deleteDoc, query, where, orderBy };
+      window._firebaseReady = true;
+      document.dispatchEvent(new Event('firebaseReady'));
+    </script>
+    <style>
+        body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; text-align: center; }
+        .card { background: white; max-width: 500px; margin: 20px auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { font-size: 24px; color: #333; }
+        button { display: block; width: 100%; max-width: 280px; height: 55px; margin: 15px auto; font-size: 18px; font-weight: bold; color: white; border: none; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+        .btn-blue   { background-color: #007aff; }
+        .btn-gray   { background-color: #8e8e93; }
+        .btn-green  { background-color: #34c759; }
+        .btn-orange { background-color: #ff9500; }
+        .btn-red    { background-color: #ff3b30; }
+        .btn-purple { background-color: #af52de; }
+        .btn-teal   { background-color: #5ac8fa; }
+        .btn-pink   { background-color: #ff2d55; }
+        input, textarea, select {
+            width: 90%; padding: 12px; font-size: 16px;
+            margin-bottom: 20px; border: 1px solid #ccc;
+            border-radius: 8px; box-sizing: border-box;
+        }
+        .hidden { display: none; }
+        .data-list {
+            text-align: left; background: #fafafa; padding: 15px;
+            border-radius: 8px; border: 1px solid #ddd;
+            max-height: 300px; overflow-y: auto; font-size: 14px;
+        }
+        .data-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .data-item:last-child { border-bottom: none; }
+        .select-label {
+            display: block; text-align: left; margin-left: 5%;
+            font-weight: bold; margin-bottom: 5px; color: #555;
+        }
+        .info-box {
+            background: #e8f4fd; border-radius: 8px; padding: 12px 16px;
+            margin-bottom: 16px; text-align: left; font-size: 15px; color: #333;
+            line-height: 1.8;
+        }
+        .info-box b { color: #555; }
+        .info-box span { font-weight: bold; color: #007aff; }
+        .notice-box {
+            background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px;
+            padding: 12px 16px; margin: 10px 5% 16px; text-align: left;
+            font-size: 13px; color: #795548; line-height: 1.7;
+        }
+        .notice-box b { color: #e65100; }
+        .worker-row, .mail-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 15px;
+        }
+        .worker-row:last-child, .mail-row:last-child { border-bottom: none; }
+        .mail-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+        .mail-row-top { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+        .mail-addr { font-size: 12px; color: #888; }
+        .btn-small-red {
+            background: #ff3b30; color: white; border: none;
+            border-radius: 6px; padding: 4px 12px; font-size: 13px; cursor: pointer; flex-shrink: 0;
+        }
+        .add-row { display: flex; gap: 8px; margin: 10px 5%; }
+        .add-row input { flex: 1; margin-bottom: 0; padding: 10px; }
+        .btn-small-green {
+            background: #34c759; color: white; border: none;
+            border-radius: 8px; padding: 10px 16px; font-size: 15px;
+            font-weight: bold; cursor: pointer; white-space: nowrap;
+        }
+        hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+        .send-section { background: #f0f0f5; border-radius: 10px; padding: 16px; margin: 10px 0; }
+        .send-section h3 { margin: 0 0 10px; font-size: 16px; color: #333; }
+        .recipient-select { width: 90%; padding: 10px; font-size: 15px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; }
+        .btn-send-mailto { background: #007aff; color: white; border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: bold; cursor: pointer; width: 90%; margin-bottom: 8px; }
+        .btn-send-gmail  { background: #ea4335; color: white; border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: bold; cursor: pointer; width: 90%; }
+        .gmail-setup { background: #fce8e6; border-radius: 8px; padding: 12px; margin: 10px 5%; text-align: left; font-size: 13px; color: #c62828; }
+        .gmail-setup input { width: 100%; margin-bottom: 8px; font-size: 14px; padding: 8px; box-sizing: border-box; }
+        .btn-small-blue { background: #007aff; color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<!-- 1. メインメニュー -->
+<div id="screen-menu" class="card">
+    <h1>日報システム</h1>
+    <button class="btn-blue" onclick="showScreen('sub')">
+        メニューボタン<br><span style="font-size:12px; font-weight:normal;">(日報の入力を始める)</span>
+    </button>
+    <button class="btn-gray" onclick="showScreen('password')">管理ボタン</button>
+</div>
+
+<!-- 2. パスワード入力画面 -->
+<div id="screen-password" class="card hidden">
+    <h1>パスワード入力</h1>
+    <p>テスト用パスワード：1234</p>
+    <input type="password" id="pass-input" placeholder="パスワードを入力">
+    <button class="btn-green" onclick="checkPassword()">確認</button>
+    <button class="btn-red" onclick="showScreen('menu')">キャンセル</button>
+</div>
+
+<!-- 3. サブメニュー1（出発前入力） -->
+<div id="screen-sub" class="card hidden">
+    <h1>📋 出発前メニュー</h1>
+    <div class="info-box">📅 本日の日付：<span id="sub-date-display"></span></div>
+    <label class="select-label">作業者</label>
+    <select id="sub-worker"><option value="">-- 選択してください --</option></select>
+    <label class="select-label">出発距離（km）</label>
+    <input type="number" id="sub-distance" placeholder="出発時の距離計を入力">
+    <hr>
+    <button class="btn-green" onclick="goToSub2()">🚗 出発（作業画面へ）</button>
+    <button class="btn-red" onclick="showScreen('menu')">トップに戻る</button>
+</div>
+
+<!-- 4. サブメニュー2（作業中トップ） -->
+<div id="screen-sub2" class="card hidden">
+    <h1>🔧 作業中メニュー</h1>
+    <div class="info-box">
+        <b>📅 日付：</b><span id="sub2-date"></span><br>
+        <b>👤 作業者：</b><span id="sub2-worker"></span><br>
+        <b>🚗 出発距離：</b><span id="sub2-distance"></span> km
+    </div>
+    <button class="btn-blue" onclick="goToInput()">📝 日報入力</button>
+    <hr>
+    <label class="select-label">帰社距離（km）</label>
+    <input type="number" id="sub2-return-distance" placeholder="帰社時の距離計を入力">
+    <button class="btn-orange" onclick="doReturn()">🏠 帰社</button>
+</div>
+
+<!-- 5. 日報入力画面 -->
+<div id="screen-input" class="card hidden">
+    <h1>📝 日報入力</h1>
+    <div class="info-box" style="font-size:13px;">
+        📅 <span id="input-date-echo"></span>　
+        👤 <span id="input-worker-echo"></span>　
+        🚗 <span id="input-distance-echo"></span> km
+    </div>
+
+    <label class="select-label">顧客名</label>
+    <select id="customer-select">
+        <option value="">-- 選択してください --</option>
+    </select>
+
+    <!-- 伝票確認 -->
+    <div style="background:#ff3b30; border-radius:10px; padding:14px; margin-bottom:20px;">
+        <span style="color:white; font-size:22px; font-weight:bold; letter-spacing:4px;">⚠️ 伝票確認</span>
+    </div>
+
+    <!-- A/B 切り替え -->
+    <div style="display:flex; justify-content:center; gap:30px; margin-bottom:20px;">
+        <label style="font-size:17px; font-weight:bold; display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="radio" name="product-type" id="type-a" value="A" checked onchange="toggleTypeFields()" style="width:22px; height:22px; margin:0;">
+            通常品（A）
+        </label>
+        <label style="font-size:17px; font-weight:bold; display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="radio" name="product-type" id="type-b" value="B" onchange="toggleTypeFields()" style="width:22px; height:22px; margin:0;">
+            特注品（B）
+        </label>
+    </div>
+
+    <!-- Bのとき追加入力欄 -->
+    <div id="type-b-fields" class="hidden">
+        <div style="background:#fff3e0; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; gap:10px; align-items:flex-end; justify-content:center;">
+            <div style="text-align:center;">
+                <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">入力欄1</label>
+                <input type="number" id="extra1" placeholder="0" style="width:80px; padding:10px 6px; font-size:16px; text-align:center; margin-bottom:0;">
+            </div>
+            <div style="text-align:center;">
+                <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">入力欄2</label>
+                <input type="number" id="extra2" placeholder="0" style="width:80px; padding:10px 6px; font-size:16px; text-align:center; margin-bottom:0;">
+            </div>
+            <div style="text-align:center;">
+                <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">入力欄3</label>
+                <input type="number" id="extra3" placeholder="0" style="width:80px; padding:10px 6px; font-size:16px; text-align:center; margin-bottom:0;">
+            </div>
+        </div>
+    </div>
+
+    <label class="select-label">備考欄</label>
+    <textarea id="notes" rows="4" placeholder="備考を入力してください"></textarea>
+
+    <!-- 問題無いか確認 -->
+    <div style="background:#ff3b30; border-radius:10px; padding:14px; margin-bottom:20px;">
+        <span style="color:white; font-size:22px; font-weight:bold; letter-spacing:4px;">⚠️ 問題無いか確認</span>
+    </div>
+
+    <button class="btn-green" onclick="finishNippo()">✅ 出発前に押す</button>
+    <button class="btn-gray" onclick="goBackToSub2()">キャンセル</button>
+</div>
+
+<!-- 6. 管理画面 -->
+<div id="screen-admin" class="card hidden">
+    <h1>⚙️ 管理画面</h1>
+    <button class="btn-purple" onclick="showScreen('worker-admin')">👤 作業者管理</button>
+    <button class="btn-green"  onclick="showScreen('customer-admin')">🏢 顧客管理</button>
+    <button class="btn-teal"   onclick="showScreen('mail-admin')">📧 メール宛先管理</button>
+    <hr>
+    <label class="select-label">表示する日報の日付を選択：</label>
+    <input type="date" id="target-date-picker" onchange="loadAndDisplayData()">
+    <p style="text-align:left; margin-left:5%;"><b>選択した日の記録一覧:</b></p>
+    <div id="viewer-list" class="data-list">データがありません。</div>
+    <br>
+    <button class="btn-orange" onclick="downloadSelectedCsv()">💾 CSV出力</button>
+
+    <!-- メール送信セクション -->
+    <div class="send-section">
+        <h3>📧 CSVをメールで送信</h3>
+        <select id="mail-recipient-select" class="recipient-select">
+            <option value="">-- 宛先を選択 --</option>
+        </select>
+        <button class="btn-send-mailto" onclick="sendByMailto()">📧 mailtoで送信（メールアプリが開く）</button>
+        <button class="btn-send-gmail"  onclick="sendByGmail()">🔴 Gmail APIで自動送信</button>
+        <div id="gmail-status" style="font-size:13px; margin-top:6px; color:#555;"></div>
+    </div>
+
+    <button class="btn-red" onclick="showScreen('menu')">メニューへ戻る</button>
+</div>
+
+<!-- 7. 作業者管理画面 -->
+<div id="screen-worker-admin" class="card hidden">
+    <h1>👤 作業者管理</h1>
+    <div class="add-row">
+        <input type="text" id="new-worker-input" placeholder="作業者名を入力">
+        <button class="btn-small-green" onclick="addWorker()">追加</button>
+    </div>
+    <div id="worker-list-view" class="data-list" style="margin:0 5%;">
+        <span style="color:gray;">作業者がいません。</span>
+    </div>
+    <br>
+    <button class="btn-gray" onclick="showScreen('admin')">← 管理画面へ戻る</button>
+</div>
+
+<!-- 8. 顧客管理画面 -->
+<div id="screen-customer-admin" class="card hidden">
+    <h1>🏢 顧客管理</h1>
+    <div class="add-row">
+        <input type="text" id="new-customer-input" placeholder="顧客名を入力">
+        <button class="btn-small-green" onclick="addCustomer()">追加</button>
+    </div>
+    <div id="customer-list-view" class="data-list" style="margin:0 5%;">
+        <span style="color:gray;">顧客がいません。</span>
+    </div>
+    <br>
+    <button class="btn-gray" onclick="showScreen('admin')">← 管理画面へ戻る</button>
+</div>
+
+<!-- 9. メール宛先管理画面 -->
+<div id="screen-mail-admin" class="card hidden">
+    <h1>📧 メール宛先管理</h1>
+
+    <p style="text-align:left; margin-left:5%; font-weight:bold; color:#555;">宛先を追加</p>
+    <div style="margin:0 5%;">
+        <input type="text"  id="new-mail-name"  placeholder="名前（例：山田太郎）" style="width:100%; box-sizing:border-box;">
+        <input type="email" id="new-mail-addr"  placeholder="メールアドレス" style="width:100%; box-sizing:border-box;">
+        <button class="btn-small-green" style="margin:0 0 16px;" onclick="addMailRecipient()">追加</button>
+    </div>
+
+    <p style="text-align:left; margin-left:5%; font-weight:bold; color:#555;">登録済み宛先</p>
+    <div id="mail-list-view" class="data-list" style="margin:0 5%;">
+        <span style="color:gray;">宛先がありません。</span>
+    </div>
+
+    <hr>
+
+    <!-- Gmail API設定 -->
+    <p style="text-align:left; margin-left:5%; font-weight:bold; color:#555;">🔴 Gmail API設定</p>
+    <div class="notice-box">
+        <b>【Gmail APIの使い方】</b><br>
+        ① <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> でプロジェクト作成<br>
+        ② 「Gmail API」を有効化<br>
+        ③ 「OAuth 2.0 クライアントID」を作成（種類：ウェブアプリ）<br>
+        ④ 表示された「クライアントID」をコピーして下に貼り付け<br>
+        ⑤ 「保存」を押してから管理画面でGmail送信ボタンを使う<br>
+        <br>
+        ※ 設定が難しい場合は <b>mailtoで送信</b> がおすすめ（設定不要）
+    </div>
+    <div style="margin:0 5%;">
+        <input type="text" id="gmail-client-id-input" placeholder="GoogleクライアントIDを貼り付け" style="width:100%; box-sizing:border-box;">
+        <button class="btn-small-blue" onclick="saveGmailClientId()">保存</button>
+        <div id="gmail-client-id-status" style="font-size:13px; color:#34c759; margin-top:6px;"></div>
+    </div>
+
+    <hr>
+    <button class="btn-gray" onclick="showScreen('admin')">← 管理画面へ戻る</button>
+</div>
+
+<script>
+    const CORRECT_PASSWORD = "1234";
+    const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+
+    var session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null };
+    var startTime = "";
+    var latitude = "未取得";
+    var longitude = "未取得";
+    var gmailAccessToken = "";
+
+    // --- 全画面ID ---
+    var ALL_SCREENS = ['menu','password','sub','sub2','input','admin','worker-admin','customer-admin','mail-admin'];
+
+    function showScreen(screenId) {
+        ALL_SCREENS.forEach(function(id) {
+            document.getElementById('screen-' + id).classList.add('hidden');
+        });
+        document.getElementById('screen-' + screenId).classList.remove('hidden');
+        if (screenId === 'sub')             initSubMenu();
+        if (screenId === 'admin')           initAdminScreen();
+        if (screenId === 'worker-admin')    { loadWorkers().then(function(){ renderWorkerList(); refreshWorkerDropdown(); }); }
+        if (screenId === 'customer-admin')  { loadCustomers().then(function(){ renderCustomerList(); }); }
+        if (screenId === 'mail-admin')      { loadMailRecipients().then(function(){ renderMailList(); }); }
+    }
+
+    function hideAll() {
+        ALL_SCREENS.forEach(function(id) {
+            document.getElementById('screen-' + id).classList.add('hidden');
+        });
+    }
+
+    // --- パスワード ---
+    function checkPassword() {
+        var input = document.getElementById('pass-input').value;
+        if (input === CORRECT_PASSWORD) {
+            document.getElementById('pass-input').value = "";
+            showScreen('admin');
+        } else { alert("パスワードが違います！"); }
+    }
+
+    // --- 日付 ---
+    function formatDate(date) {
+        var y = date.getFullYear();
+        var m = ("0"+(date.getMonth()+1)).slice(-2);
+        var d = ("0"+date.getDate()).slice(-2);
+        return y+"-"+m+"-"+d;
+    }
+    function formatDateJa(dateStr) {
+        var p = dateStr.split("-");
+        return p[0]+"年"+parseInt(p[1])+"月"+parseInt(p[2])+"日";
+    }
+
+    // --- サブメニュー1 ---
+    function initSubMenu() {
+        var today = formatDate(new Date());
+        document.getElementById('sub-date-display').textContent = formatDateJa(today);
+        refreshWorkerDropdown();
+    }
+    function refreshWorkerDropdown() {
+        var workers = getWorkers();
+        var sel = document.getElementById('sub-worker');
+        sel.innerHTML = '<option value="">-- 選択してください --</option>';
+        workers.forEach(function(w) {
+            var opt = document.createElement('option');
+            opt.value = w; opt.textContent = w;
+            sel.appendChild(opt);
+        });
+    }
+
+    // --- 出発 → サブメニュー2 ---
+    function goToSub2() {
+        var worker   = document.getElementById('sub-worker').value;
+        var distance = document.getElementById('sub-distance').value;
+        if (!worker)   { alert("作業者を選択してください！"); return; }
+        if (!distance) { alert("出発距離を入力してください！"); return; }
+        var now = new Date();
+        session.date = formatDate(now);
+        session.dateJa = formatDateJa(session.date);
+        session.worker = worker;
+        session.departDistance = distance;
+        session.departTime = now;
+        document.getElementById('sub2-date').textContent     = session.dateJa;
+        document.getElementById('sub2-worker').textContent   = session.worker;
+        document.getElementById('sub2-distance').textContent = session.departDistance;
+        document.getElementById('sub2-return-distance').value = "";
+        hideAll();
+        document.getElementById('screen-sub2').classList.remove('hidden');
+    }
+
+    // --- 日報入力へ ---
+    function goToInput() {
+        document.getElementById('input-date-echo').textContent     = session.dateJa;
+        document.getElementById('input-worker-echo').textContent   = session.worker;
+        document.getElementById('input-distance-echo').textContent = session.departDistance;
+        startNippo();
+        hideAll();
+        document.getElementById('screen-input').classList.remove('hidden');
+    }
+    function goBackToSub2() {
+        hideAll();
+        document.getElementById('screen-sub2').classList.remove('hidden');
+    }
+
+    // --- GPS取得 ---
+    function startNippo() {
+        var now = new Date();
+        startTime = now.toLocaleString('ja-JP');
+        // フォームリセット
+        refreshCustomerDropdown();
+        document.getElementById('type-a').checked = true;
+        document.getElementById('type-b-fields').classList.add('hidden');
+        document.getElementById('extra1').value = "";
+        document.getElementById('extra2').value = "";
+        document.getElementById('extra3').value = "";
+        document.getElementById('notes').value = "";
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(p) { latitude = p.coords.latitude; longitude = p.coords.longitude; },
+                function()  { latitude = "非許可または取得失敗"; longitude = "非許可または取得失敗"; }
+            );
+        } else { latitude = "GPS未対応端末"; longitude = "GPS未対応端末"; }
+    }
+
+    // --- A/B 切り替え ---
+    function toggleTypeFields() {
+        var isB = document.getElementById('type-b').checked;
+        var fields = document.getElementById('type-b-fields');
+        if (isB) { fields.classList.remove('hidden'); }
+        else     { fields.classList.add('hidden'); }
+    }
+
+    // --- 顧客プルダウン更新 ---
+    function refreshCustomerDropdown() {
+        var customers = getCustomers();
+        var sel = document.getElementById('customer-select');
+        sel.innerHTML = '<option value="">-- 選択してください --</option>';
+        customers.forEach(function(c) {
+            var opt = document.createElement('option');
+            opt.value = c; opt.textContent = c;
+            sel.appendChild(opt);
+        });
+    }
+
+    // --- 日報登録 ---
+    async function finishNippo() {
+        var customer = document.getElementById('customer-select').value;
+        if (!customer) { alert("顧客名を選択してください！"); return; }
+        var productType = document.querySelector('input[name="product-type"]:checked').value;
+        var now = new Date();
+        var newRecord = {
+            startTime: startTime,
+            endTime: now.toLocaleString('ja-JP'),
+            lat: latitude, lng: longitude,
+            customer: customer,
+            productType: productType,
+            extra1: productType === 'B' ? document.getElementById('extra1').value : "",
+            extra2: productType === 'B' ? document.getElementById('extra2').value : "",
+            extra3: productType === 'B' ? document.getElementById('extra3').value : "",
+            notes: document.getElementById('notes').value,
+            worker: session.worker,
+            departDistance: session.departDistance,
+            returnDistance: "", travelDistance: "", workHours: ""
+        };
+        var existingData = await loadNippoData(session.date);
+        var dataArray = existingData ? existingData : [];
+        dataArray.push(newRecord);
+        await saveNippoData(session.date, dataArray);
+        alert("日報を登録しました！");
+        hideAll();
+        document.getElementById('screen-sub2').classList.remove('hidden');
+    }
+
+    // --- 帰社 ---
+    async function doReturn() {
+        var returnDist = document.getElementById('sub2-return-distance').value;
+        if (!returnDist) { alert("帰社距離を入力してください！"); return; }
+        var travelDist = (parseFloat(returnDist) - parseFloat(session.departDistance)).toFixed(1);
+        var now = new Date();
+        var diffMs = now - session.departTime;
+        var workHoursStr = Math.floor(diffMs/3600000)+"時間"+Math.floor((diffMs%3600000)/60000)+"分";
+        var existingData = await loadNippoData(session.date);
+        var dataArray = existingData ? existingData : [];
+        for (var i = 0; i < dataArray.length; i++) {
+            if (dataArray[i].worker === session.worker && dataArray[i].departDistance === session.departDistance) {
+                dataArray[i].returnDistance = returnDist;
+                dataArray[i].travelDistance = travelDist;
+                dataArray[i].workHours = workHoursStr;
+            }
+        }
+        await saveNippoData(session.date, dataArray);
+        alert("お疲れ様でした！\n走行距離："+travelDist+" km\n作業時間："+workHoursStr);
+        session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null };
+        showScreen('menu');
+    }
+
+    // --- 管理画面 ---
+    async function initAdminScreen() {
+        var picker = document.getElementById('target-date-picker');
+        if (!picker.value) picker.value = formatDate(new Date());
+        await loadAndDisplayData();
+        refreshMailRecipientSelect();
+    }
+    async function loadAndDisplayData() {
+        var selectedDate = document.getElementById('target-date-picker').value;
+        var viewer = document.getElementById('viewer-list');
+        viewer.innerHTML = "<span style='color:gray;'>読み込み中...</span>";
+        var dataArray = await loadNippoData(selectedDate);
+        if (!dataArray || dataArray.length === 0) {
+            viewer.innerHTML = "<span style='color:gray;'>この日のデータはまだありません。</span>"; return;
+        }
+        var html = "";
+        for (var i = 0; i < dataArray.length; i++) {
+            var r = dataArray[i];
+            html += "<div class='data-item'>";
+            html += "<b>【"+(i+1)+"件目】</b><br>";
+            html += "<b>作業者:</b> "+(r.worker||"—")+"<br>";
+            html += "<b>顧客名:</b> "+(r.customer||r.product||"—")+"　";
+            html += "<b>区分:</b> "+(r.productType==='B'?'特注品(B)':'通常品(A)')+"<br>";
+            if (r.productType==='B') {
+                html += "<b>入力欄1:</b> "+(r.extra1||"—")+"　";
+                html += "<b>入力欄2:</b> "+(r.extra2||"—")+"　";
+                html += "<b>入力欄3:</b> "+(r.extra3||"—")+"<br>";
+            }
+            html += "<b>帰社距離:</b> "+(r.returnDistance||"—")+" km　";
+            html += "<b>走行距離:</b> "+(r.travelDistance||"—")+" km<br>";
+            html += "<b>作業時間:</b> "+(r.workHours||"—")+"<br>";
+            html += "<b>開始:</b> "+r.startTime+" ／ <b>終了:</b> "+r.endTime+"<br>";
+            html += "<b>位置:</b> 緯度 "+r.lat+" / 経度 "+r.lng+"<br>";
+            html += "<b>備考:</b> "+r.notes+"<br>";
+            html += "</div>";
+        }
+        viewer.innerHTML = html;
+    }
+
+    async function buildCsvContent(selectedDate) {
+        var dataArray = await loadNippoData(selectedDate);
+        if (!dataArray || dataArray.length === 0) return null;
+        var csv = "\uFEFF";
+        csv += "No,作業者,顧客名,区分,入力欄1,入力欄2,入力欄3,出発距離(km),帰社距離(km),走行距離(km),作業時間,開始時間,終了時間,位置情報(緯度),位置情報(経度),備考\n";
+        for (var i = 0; i < dataArray.length; i++) {
+            var r = dataArray[i];
+            var c = function(s){ return (s||"").replace(/,/g," ").replace(/\n/g," "); };
+            var typeLabel = r.productType==='B' ? '特注品(B)' : '通常品(A)';
+            csv += (i+1)+","+c(r.worker)+","
+                +c(r.customer||r.product)+","+typeLabel+","
+                +c(r.extra1)+","+c(r.extra2)+","+c(r.extra3)+","
+                +c(r.departDistance||r.distance)+","+c(r.returnDistance)+","
+                +c(r.travelDistance)+","+c(r.workHours)+","
+                +r.startTime+","+r.endTime+","
+                +r.lat+","+r.lng+","
+                +c(r.notes)+"\n";
+        }
+        return csv;
+    }
+    async function downloadSelectedCsv() {
+        var selectedDate = document.getElementById('target-date-picker').value;
+        var csv = await buildCsvContent(selectedDate);
+        if (!csv) { alert("出力するデータがありません。"); return; }
+        var blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", "日報まとめ_"+selectedDate+".csv");
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+
+    // ===== メール送信 =====
+
+    async function sendByMailto() {
+        var selectedDate = document.getElementById('target-date-picker').value;
+        var recipientVal = document.getElementById('mail-recipient-select').value;
+        if (!recipientVal) { alert("宛先を選択してください！"); return; }
+        var csv = await buildCsvContent(selectedDate);
+        if (!csv) { alert("送信するデータがありません。"); return; }
+
+        var subject = encodeURIComponent("日報データ_"+selectedDate);
+        var body = encodeURIComponent(
+            selectedDate+"の日報データです。\n\n"
+            +"※ CSVファイルの内容（コピー用）:\n\n"
+            + csv
+        );
+        var mailto = "mailto:"+recipientVal+"?subject="+subject+"&body="+body;
+        window.location.href = mailto;
+    }
+
+    // --- Gmail APIで送信 ---
+    async function sendByGmail() {
+        var clientId = localStorage.getItem('gmailClientId');
+        if (!clientId) {
+            alert("Gmail APIのクライアントIDが設定されていません。\n「メール宛先管理」→「Gmail API設定」から設定してください。");
+            return;
+        }
+        var selectedDate = document.getElementById('target-date-picker').value;
+        var recipientVal = document.getElementById('mail-recipient-select').value;
+        if (!recipientVal) { alert("宛先を選択してください！"); return; }
+        var csv = await buildCsvContent(selectedDate);
+        if (!csv) { alert("送信するデータがありません。"); return; }
+
+        document.getElementById('gmail-status').textContent = "Googleアカウントに接続中...";
+
+        // Google OAuth2 認証
+        var authUrl = "https://accounts.google.com/o/oauth2/v2/auth"
+            +"?client_id="+encodeURIComponent(clientId)
+            +"&redirect_uri="+encodeURIComponent(window.location.href.split('?')[0])
+            +"&response_type=token"
+            +"&scope="+encodeURIComponent(GMAIL_SCOPE);
+
+        // 認証ウィンドウを開く
+        var authWin = window.open(authUrl, "_blank", "width=500,height=600");
+
+        // トークン取得待機
+        var checkInterval = setInterval(function() {
+            try {
+                var hash = authWin.location.hash;
+                if (hash && hash.indexOf("access_token") !== -1) {
+                    clearInterval(checkInterval);
+                    authWin.close();
+                    var token = hash.match(/access_token=([^&]*)/)[1];
+                    gmailSendMail(token, recipientVal, selectedDate, csv);
+                }
+            } catch(e) { /* クロスオリジン中は無視 */ }
+            if (authWin.closed) { clearInterval(checkInterval); document.getElementById('gmail-status').textContent = ""; }
+        }, 500);
+    }
+
+    function gmailSendMail(token, to, dateStr, csvContent) {
+        document.getElementById('gmail-status').textContent = "送信中...";
+        var subject = "日報データ_"+dateStr;
+        var body = dateStr+"の日報データを添付（本文）でお送りします。\n\n"+csvContent;
+
+        // RFC2822形式のメール
+        var mail = "To: "+to+"\r\n"
+            +"Subject: =?UTF-8?B?"+btoa(unescape(encodeURIComponent(subject)))+"?=\r\n"
+            +"Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+            +body;
+
+        var encoded = btoa(unescape(encodeURIComponent(mail)))
+            .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+        fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer "+token,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ raw: encoded })
+        })
+        .then(function(res) {
+            if (res.ok) {
+                document.getElementById('gmail-status').textContent = "✅ 送信完了！";
+                alert("メールを送信しました！");
+            } else {
+                res.json().then(function(e) {
+                    document.getElementById('gmail-status').textContent = "❌ 送信失敗";
+                    alert("送信失敗："+JSON.stringify(e.error&&e.error.message||e));
+                });
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('gmail-status').textContent = "❌ エラー";
+            alert("通信エラー："+err);
+        });
+    }
+
+    // ===== メール宛先管理（Firestore） =====
+    var _mailCache = [];
+    async function loadMailRecipients() {
+        var snap = await fs().getDocs(fs().collection(db(), 'mailRecipients'));
+        _mailCache = [];
+        snap.forEach(function(d) { _mailCache.push({ id: d.id, name: d.data().name, email: d.data().email }); });
+        _mailCache.sort(function(a,b){ return a.name.localeCompare(b.name,'ja'); });
+    }
+    function getMailRecipients() { return _mailCache; }
+    async function addMailRecipient() {
+        var name = document.getElementById('new-mail-name').value.trim();
+        var addr = document.getElementById('new-mail-addr').value.trim();
+        if (!name) { alert("名前を入力してください。"); return; }
+        if (!addr || addr.indexOf('@') === -1) { alert("正しいメールアドレスを入力してください。"); return; }
+        await fs().addDoc(fs().collection(db(), 'mailRecipients'), { name: name, email: addr });
+        document.getElementById('new-mail-name').value = "";
+        document.getElementById('new-mail-addr').value = "";
+        await loadMailRecipients();
+        renderMailList();
+        refreshMailRecipientSelect();
+    }
+    async function deleteMailRecipient(index) {
+        var r = _mailCache[index];
+        if (!confirm(r.name+" を削除しますか？")) return;
+        await fs().deleteDoc(fs().doc(db(), 'mailRecipients', r.id));
+        await loadMailRecipients();
+        renderMailList();
+        refreshMailRecipientSelect();
+    }
+    function renderMailList() {
+        var container = document.getElementById('mail-list-view');
+        if (_mailCache.length === 0) {
+            container.innerHTML = "<span style='color:gray;'>宛先がありません。</span>"; return;
+        }
+        var html = "";
+        _mailCache.forEach(function(r, i) {
+            html += "<div class='mail-row'>";
+            html += "<div class='mail-row-top'>";
+            html += "<span><b>"+r.name+"</b></span>";
+            html += "<button class='btn-small-red' onclick='deleteMailRecipient("+i+")'>削除</button>";
+            html += "</div>";
+            html += "<span class='mail-addr'>"+r.email+"</span>";
+            html += "</div>";
+        });
+        container.innerHTML = html;
+    }
+    function refreshMailRecipientSelect() {
+        var sel = document.getElementById('mail-recipient-select');
+        sel.innerHTML = '<option value="">-- 宛先を選択 --</option>';
+        _mailCache.forEach(function(r) {
+            var opt = document.createElement('option');
+            opt.value = r.email;
+            opt.textContent = r.name + "（" + r.email + "）";
+            sel.appendChild(opt);
+        });
+    }
+
+    // ===== Firestore 日報データ読み書き =====
+    async function saveNippoData(dateStr, dataArray) {
+        await fs().setDoc(fs().doc(db(), 'nippo', dateStr), { records: dataArray });
+    }
+    async function loadNippoData(dateStr) {
+        var snap = await fs().getDoc(fs().doc(db(), 'nippo', dateStr));
+        if (!snap.exists()) return [];
+        return snap.data().records || [];
+    }
+
+    // ===== 初期化 =====
+    async function initApp() {
+        await Promise.all([loadWorkers(), loadCustomers(), loadMailRecipients()]);
+        showScreen('menu');
+    }
+
+    // Firebase準備完了後に起動
+    if (window._firebaseReady) {
+        initApp();
+    } else {
+        document.addEventListener('firebaseReady', initApp);
+    }
+
+    // --- Gmail クライアントID保存 ---
+    function saveGmailClientId() {
+        var id = document.getElementById('gmail-client-id-input').value.trim();
+        if (!id) { alert("クライアントIDを入力してください。"); return; }
+        localStorage.setItem('gmailClientId', id);
+        document.getElementById('gmail-client-id-status').textContent = "✅ 保存しました";
+        setTimeout(function(){ document.getElementById('gmail-client-id-status').textContent = ""; }, 3000);
+    }
+
+    // 顧客管理（Firestore）
+    var _customerCache = [];
+    async function loadCustomers() {
+        var snap = await fs().getDocs(fs().collection(db(), 'customers'));
+        _customerCache = [];
+        snap.forEach(function(d) { _customerCache.push({ id: d.id, name: d.data().name }); });
+        _customerCache.sort(function(a,b){ return a.name.localeCompare(b.name,'ja'); });
+    }
+    function getCustomers() { return _customerCache.map(function(c){ return c.name; }); }
+    async function addCustomer() {
+        var name = document.getElementById('new-customer-input').value.trim();
+        if (!name) { alert("顧客名を入力してください。"); return; }
+        if (_customerCache.some(function(c){ return c.name === name; })) { alert("すでに登録されています。"); return; }
+        await fs().addDoc(fs().collection(db(), 'customers'), { name: name });
+        document.getElementById('new-customer-input').value = "";
+        await loadCustomers();
+        renderCustomerList();
+    }
+    async function deleteCustomer(index) {
+        var c = _customerCache[index];
+        if (!confirm(c.name + " を削除しますか？")) return;
+        await fs().deleteDoc(fs().doc(db(), 'customers', c.id));
+        await loadCustomers();
+        renderCustomerList();
+    }
+    function renderCustomerList() {
+        var container = document.getElementById('customer-list-view');
+        if (_customerCache.length === 0) { container.innerHTML = "<span style='color:gray;'>顧客がいません。</span>"; return; }
+        var html = "";
+        for (var i = 0; i < _customerCache.length; i++) {
+            html += "<div class='worker-row'><span>" + _customerCache[i].name + "</span>";
+            html += "<button class='btn-small-red' onclick='deleteCustomer(" + i + ")'>削除</button></div>";
+        }
+        container.innerHTML = html;
+    }
+
+    // ===== Firestore ヘルパー =====
+    function db() { return window._db; }
+    function fs() { return window._fs; }
+
+    // 作業者管理（Firestore）
+    var _workerCache = [];
+    async function loadWorkers() {
+        var snap = await fs().getDocs(fs().collection(db(), 'workers'));
+        _workerCache = [];
+        snap.forEach(function(d) { _workerCache.push({ id: d.id, name: d.data().name }); });
+        _workerCache.sort(function(a,b){ return a.name.localeCompare(b.name,'ja'); });
+    }
+    function getWorkers() { return _workerCache.map(function(w){ return w.name; }); }
+    async function addWorker() {
+        var name = document.getElementById('new-worker-input').value.trim();
+        if (!name) { alert("名前を入力してください。"); return; }
+        if (_workerCache.some(function(w){ return w.name === name; })) { alert("すでに登録されています。"); return; }
+        await fs().addDoc(fs().collection(db(), 'workers'), { name: name });
+        document.getElementById('new-worker-input').value = "";
+        await loadWorkers();
+        renderWorkerList();
+        refreshWorkerDropdown();
+    }
+    async function deleteWorker(index) {
+        var w = _workerCache[index];
+        if (!confirm(w.name + " を削除しますか？")) return;
+        await fs().deleteDoc(fs().doc(db(), 'workers', w.id));
+        await loadWorkers();
+        renderWorkerList();
+        refreshWorkerDropdown();
+    }
+    function renderWorkerList() {
+        var container = document.getElementById('worker-list-view');
+        if (_workerCache.length === 0) { container.innerHTML = "<span style='color:gray;'>作業者がいません。</span>"; return; }
+        var html = "";
+        for (var i = 0; i < _workerCache.length; i++) {
+            html += "<div class='worker-row'><span>" + _workerCache[i].name + "</span>";
+            html += "<button class='btn-small-red' onclick='deleteWorker(" + i + ")'>削除</button></div>";
+        }
+        container.innerHTML = html;
+    }
+</script>
+</body>
+</html>
