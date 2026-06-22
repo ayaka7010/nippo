@@ -217,12 +217,14 @@
     <button class="btn-green"  onclick="showScreen('customer-admin')">🏢 顧客管理</button>
     <button class="btn-teal"   onclick="showScreen('mail-admin')">📧 メール宛先管理</button>
     <hr>
-    <label class="select-label">表示する日報の日付を選択：</label>
+
+    <!-- 日別表示 -->
+    <label class="select-label">📅 日別表示</label>
     <input type="date" id="target-date-picker" onchange="loadAndDisplayData()">
     <p style="text-align:left; margin-left:5%;"><b>選択した日の記録一覧:</b></p>
     <div id="viewer-list" class="data-list">データがありません。</div>
     <br>
-    <button class="btn-orange" onclick="downloadSelectedCsv()">💾 CSV出力</button>
+    <button class="btn-orange" onclick="downloadSelectedCsv()">💾 CSV出力（日別）</button>
 
     <!-- メール送信セクション -->
     <div class="send-section">
@@ -235,6 +237,30 @@
         <div id="gmail-status" style="font-size:13px; margin-top:6px; color:#555;"></div>
     </div>
 
+    <hr>
+
+    <!-- 月別絞り込み -->
+    <label class="select-label">🔍 月別・顧客・区分で絞り込み</label>
+    <div style="margin:0 5% 10px;">
+        <label style="display:block; font-size:13px; color:#555; margin-bottom:4px;">年月</label>
+        <input type="month" id="filter-month" style="width:100%; box-sizing:border-box; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:8px; margin-bottom:10px;">
+        <label style="display:block; font-size:13px; color:#555; margin-bottom:4px;">顧客</label>
+        <select id="filter-customer" style="width:100%; box-sizing:border-box; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:8px; margin-bottom:10px;">
+            <option value="">-- すべての顧客 --</option>
+        </select>
+        <label style="display:block; font-size:13px; color:#555; margin-bottom:4px;">区分</label>
+        <select id="filter-type" style="width:100%; box-sizing:border-box; padding:10px; font-size:15px; border:1px solid #ccc; border-radius:8px; margin-bottom:10px;">
+            <option value="">-- すべて --</option>
+            <option value="A">通常品（A）</option>
+            <option value="B">特注品（B）</option>
+        </select>
+        <button class="btn-blue" style="width:100%; height:46px; font-size:16px;" onclick="searchByFilter()">🔍 絞り込み表示</button>
+    </div>
+    <div id="filter-result-list" class="data-list" style="display:none;"></div>
+    <br>
+    <button class="btn-orange" id="filter-csv-btn" style="display:none;" onclick="downloadFilterCsv()">💾 CSV出力（絞り込み結果）</button>
+
+    <hr>
     <button class="btn-red" onclick="showScreen('menu')">メニューへ戻る</button>
 </div>
 
@@ -244,6 +270,12 @@
     <div class="add-row">
         <input type="text" id="new-worker-input" placeholder="作業者名を入力">
         <button class="btn-small-green" onclick="addWorker()">追加</button>
+    </div>
+    <div style="margin:0 5% 12px;">
+        <p style="text-align:left; font-size:13px; color:#555; margin:8px 0 4px;">📂 CSVで一括登録（A列に名前を並べたファイル）</p>
+        <input type="file" id="worker-csv-input" accept=".csv" style="font-size:13px; width:100%; box-sizing:border-box; margin-bottom:6px;">
+        <button class="btn-small-blue" onclick="importWorkerCsv()">CSVを読み込む</button>
+        <div id="worker-csv-status" style="font-size:13px; color:#34c759; margin-top:4px;"></div>
     </div>
     <div id="worker-list-view" class="data-list" style="margin:0 5%;">
         <span style="color:gray;">作業者がいません。</span>
@@ -258,6 +290,12 @@
     <div class="add-row">
         <input type="text" id="new-customer-input" placeholder="顧客名を入力">
         <button class="btn-small-green" onclick="addCustomer()">追加</button>
+    </div>
+    <div style="margin:0 5% 12px;">
+        <p style="text-align:left; font-size:13px; color:#555; margin:8px 0 4px;">📂 CSVで一括登録（A列に名前を並べたファイル）</p>
+        <input type="file" id="customer-csv-input" accept=".csv" style="font-size:13px; width:100%; box-sizing:border-box; margin-bottom:6px;">
+        <button class="btn-small-blue" onclick="importCustomerCsv()">CSVを読み込む</button>
+        <div id="customer-csv-status" style="font-size:13px; color:#34c759; margin-top:4px;"></div>
     </div>
     <div id="customer-list-view" class="data-list" style="margin:0 5%;">
         <span style="color:gray;">顧客がいません。</span>
@@ -505,6 +543,12 @@
     async function initAdminScreen() {
         var picker = document.getElementById('target-date-picker');
         if (!picker.value) picker.value = formatDate(new Date());
+        var monthPicker = document.getElementById('filter-month');
+        if (!monthPicker.value) {
+            var now = new Date();
+            monthPicker.value = now.getFullYear()+"-"+("0"+(now.getMonth()+1)).slice(-2);
+        }
+        initFilterCustomerSelect();
         await loadAndDisplayData();
         refreshMailRecipientSelect();
     }
@@ -724,6 +768,140 @@
             opt.textContent = r.name + "（" + r.email + "）";
             sel.appendChild(opt);
         });
+    }
+
+    // ===== 月別絞り込み =====
+    var _filterResults = [];
+
+    function initFilterCustomerSelect() {
+        var sel = document.getElementById('filter-customer');
+        sel.innerHTML = '<option value="">-- すべての顧客 --</option>';
+        _customerCache.forEach(function(c) {
+            var opt = document.createElement('option');
+            opt.value = c.name; opt.textContent = c.name;
+            sel.appendChild(opt);
+        });
+    }
+
+    async function searchByFilter() {
+        var month = document.getElementById('filter-month').value; // "2026-06"
+        if (!month) { alert("年月を選択してください。"); return; }
+        var filterCustomer = document.getElementById('filter-customer').value;
+        var filterType = document.getElementById('filter-type').value;
+
+        var resultDiv = document.getElementById('filter-result-list');
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = "<span style='color:gray;'>読み込み中...</span>";
+
+        // 月内の全日付を取得（1日〜末日）
+        var year = parseInt(month.split('-')[0]);
+        var mon  = parseInt(month.split('-')[1]);
+        var daysInMonth = new Date(year, mon, 0).getDate();
+        _filterResults = [];
+
+        for (var d = 1; d <= daysInMonth; d++) {
+            var dateStr = year + "-" + ("0"+mon).slice(-2) + "-" + ("0"+d).slice(-2);
+            var records = await loadNippoData(dateStr);
+            records.forEach(function(r) {
+                r._date = dateStr;
+                _filterResults.push(r);
+            });
+        }
+
+        // 絞り込み
+        var filtered = _filterResults.filter(function(r) {
+            if (filterCustomer && (r.customer || r.product) !== filterCustomer) return false;
+            if (filterType && r.productType !== filterType) return false;
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            resultDiv.innerHTML = "<span style='color:gray;'>該当するデータがありません。</span>";
+            document.getElementById('filter-csv-btn').style.display = 'none';
+            return;
+        }
+
+        var html = "<b>"+filtered.length+"件見つかりました</b><br><br>";
+        filtered.forEach(function(r, i) {
+            html += "<div class='data-item'>";
+            html += "<b>【"+(i+1)+"】"+r._date+"</b><br>";
+            html += "<b>作業者:</b> "+(r.worker||"—")+"　";
+            html += "<b>顧客:</b> "+(r.customer||r.product||"—")+"　";
+            html += "<b>区分:</b> "+(r.productType==='B'?'特注品(B)':'通常品(A)')+"<br>";
+            if (r.productType === 'B') {
+                html += "<b>入力欄1:</b> "+(r.extra1||"—")+"　";
+                html += "<b>入力欄2:</b> "+(r.extra2||"—")+"　";
+                html += "<b>入力欄3:</b> "+(r.extra3||"—")+"<br>";
+            }
+            html += "<b>走行:</b> "+(r.travelDistance||"—")+"km　";
+            html += "<b>作業時間:</b> "+(r.workHours||"—")+"<br>";
+            html += "<b>備考:</b> "+(r.notes||"—")+"<br>";
+            html += "</div>";
+        });
+        resultDiv.innerHTML = html;
+        document.getElementById('filter-csv-btn').style.display = 'block';
+        _filterResults = filtered; // CSV用に絞り込み結果を保持
+    }
+
+    function downloadFilterCsv() {
+        if (!_filterResults || _filterResults.length === 0) { alert("データがありません。"); return; }
+        var month = document.getElementById('filter-month').value;
+        var csv = "\uFEFF";
+        csv += "日付,作業者,顧客名,区分,入力欄1,入力欄2,入力欄3,出発距離(km),帰社距離(km),走行距離(km),作業時間,開始時間,終了時間,備考\n";
+        _filterResults.forEach(function(r) {
+            var c = function(s){ return (s||"").replace(/,/g," ").replace(/\n/g," "); };
+            var typeLabel = r.productType==='B' ? '特注品(B)' : '通常品(A)';
+            csv += c(r._date)+","+c(r.worker)+","+c(r.customer||r.product)+","+typeLabel+","
+                +c(r.extra1)+","+c(r.extra2)+","+c(r.extra3)+","
+                +c(r.departDistance)+","+c(r.returnDistance)+","
+                +c(r.travelDistance)+","+c(r.workHours)+","
+                +c(r.startTime)+","+c(r.endTime)+","
+                +c(r.notes)+"\n";
+        });
+        var blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", "絞り込み結果_"+month+".csv");
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+
+    // ===== CSV一括登録 =====
+    async function importWorkerCsv() {
+        var file = document.getElementById('worker-csv-input').files[0];
+        if (!file) { alert("ファイルを選択してください。"); return; }
+        var text = await file.text();
+        var lines = text.split(/\r?\n/).map(function(l){ return l.split(',')[0].trim().replace(/^"|"$/g,''); }).filter(function(l){ return l; });
+        var added = 0, skipped = 0;
+        for (var i = 0; i < lines.length; i++) {
+            var name = lines[i];
+            if (_workerCache.some(function(w){ return w.name === name; })) { skipped++; continue; }
+            await fs().addDoc(fs().collection(db(), 'workers'), { name: name });
+            added++;
+        }
+        await loadWorkers();
+        renderWorkerList();
+        refreshWorkerDropdown();
+        document.getElementById('worker-csv-input').value = "";
+        document.getElementById('worker-csv-status').textContent = "✅ "+added+"件追加（"+skipped+"件は重複スキップ）";
+        setTimeout(function(){ document.getElementById('worker-csv-status').textContent = ""; }, 4000);
+    }
+    async function importCustomerCsv() {
+        var file = document.getElementById('customer-csv-input').files[0];
+        if (!file) { alert("ファイルを選択してください。"); return; }
+        var text = await file.text();
+        var lines = text.split(/\r?\n/).map(function(l){ return l.split(',')[0].trim().replace(/^"|"$/g,''); }).filter(function(l){ return l; });
+        var added = 0, skipped = 0;
+        for (var i = 0; i < lines.length; i++) {
+            var name = lines[i];
+            if (_customerCache.some(function(c){ return c.name === name; })) { skipped++; continue; }
+            await fs().addDoc(fs().collection(db(), 'customers'), { name: name });
+            added++;
+        }
+        await loadCustomers();
+        renderCustomerList();
+        document.getElementById('customer-csv-input').value = "";
+        document.getElementById('customer-csv-status').textContent = "✅ "+added+"件追加（"+skipped+"件は重複スキップ）";
+        setTimeout(function(){ document.getElementById('customer-csv-status').textContent = ""; }, 4000);
     }
 
     // ===== Firestore 日報データ読み書き =====
