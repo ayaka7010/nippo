@@ -103,6 +103,13 @@
 </head>
 <body>
 
+<!-- 撮影写真プレビュー（帰社ボタンを押すまで画面右上に固定表示） -->
+<div id="sub2-photo-thumb-wrap" style="display:none; position:fixed; top:12px; right:12px; z-index:1000;">
+    <img id="sub2-photo-thumb" src="" alt="撮影写真"
+         style="width:70px; height:70px; object-fit:cover; border-radius:10px; border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,0.3); cursor:pointer;"
+         onclick="document.getElementById('sub2-photo-input').click();">
+</div>
+
 <!-- 1. メインメニュー -->
 <div id="screen-menu" class="card">
     <h1>日報システム</h1>
@@ -129,6 +136,40 @@
     <select id="sub-worker"><option value="">-- 選択してください --</option></select>
     <label class="select-label">出発距離（km）</label>
     <input type="number" id="sub-distance" placeholder="出発時の距離計を入力">
+    <hr>
+    <button class="btn-teal" onclick="document.getElementById('sub2-photo-input').click();">📷 写真を撮る</button>
+    <input type="file" id="sub2-photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handleSub2Photo(event)">
+    <hr>
+    <div style="text-align:left; margin: 0 5% 8px;">
+        <b style="color:#555; font-size:15px;">🧊 ビーズ引取（任意）</b>
+    </div>
+    <div style="display:flex; gap:8px; margin:0 5% 14px;">
+        <div style="flex:1; text-align:center;">
+            <label class="select-label" style="text-align:center; margin-left:0; font-size:13px;">9mm</label>
+            <input type="number" id="bead-9mm" placeholder="数量" style="width:100%; margin-bottom:0; box-sizing:border-box;">
+        </div>
+        <div style="flex:1; text-align:center;">
+            <label class="select-label" style="text-align:center; margin-left:0; font-size:13px;">6mm</label>
+            <input type="number" id="bead-6mm" placeholder="数量" style="width:100%; margin-bottom:0; box-sizing:border-box;">
+        </div>
+        <div style="flex:1; text-align:center;">
+            <label class="select-label" style="text-align:center; margin-left:0; font-size:13px;">3mm</label>
+            <input type="number" id="bead-3mm" placeholder="数量" style="width:100%; margin-bottom:0; box-sizing:border-box;">
+        </div>
+    </div>
+    <label class="select-label">引取先別数量（任意）</label>
+    <div class="add-row" style="align-items:center;">
+        <span style="flex:2; text-align:left; font-size:15px;">名古屋</span>
+        <input type="number" id="bead-loc1-qty" placeholder="数量" style="flex:1;">
+    </div>
+    <div class="add-row" style="align-items:center;">
+        <span style="flex:2; text-align:left; font-size:15px;">伊賀</span>
+        <input type="number" id="bead-loc2-qty" placeholder="数量" style="flex:1;">
+    </div>
+    <div class="add-row" style="align-items:center;">
+        <span style="flex:2; text-align:left; font-size:15px;">9mm詰替</span>
+        <input type="number" id="bead-loc3-qty" placeholder="数量" style="flex:1;">
+    </div>
     <hr>
     <button class="btn-green" onclick="goToSub2()">🚗 出発（作業画面へ）</button>
     <button class="btn-red" onclick="showScreen('menu')">トップに戻る</button>
@@ -200,6 +241,12 @@
 
     <label class="select-label">備考欄</label>
     <textarea id="notes" rows="4" placeholder="備考を入力してください"></textarea>
+
+    <button class="btn-teal" onclick="showBeadConfirm()">🧊 ビーズ数量確認</button>
+    <div id="bead-confirm-box" class="hidden" style="text-align:left; background:#f0f0f5; border-radius:8px; padding:12px 16px; margin:0 5% 16px; font-size:14px; line-height:1.8;">
+        <div id="bead-confirm-content"></div>
+        <button class="btn-gray" style="margin:10px 0 0; width:100%; max-width:none; height:40px;" onclick="hideBeadConfirm()">閉じる</button>
+    </div>
 
     <!-- 問題無いか確認 -->
     <div style="background:#ff3b30; border-radius:10px; padding:14px; margin-bottom:20px;">
@@ -348,7 +395,7 @@
     const CORRECT_PASSWORD = "1234";
     const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
-    var session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null };
+    var session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null, beadPickup:null };
     var startTime = "";
     var latitude = "未取得";
     var longitude = "未取得";
@@ -401,6 +448,7 @@
         var today = formatDate(new Date());
         document.getElementById('sub-date-display').textContent = formatDateJa(today);
         refreshWorkerDropdown();
+        resetBeadPickupFields();
     }
     function refreshWorkerDropdown() {
         var workers = getWorkers();
@@ -411,6 +459,40 @@
             opt.value = w; opt.textContent = w;
             sel.appendChild(opt);
         });
+    }
+
+    // --- ビーズ引取（任意入力、未入力でもそのまま出発可） ---
+    function resetBeadPickupFields() {
+        ["bead-9mm","bead-6mm","bead-3mm","bead-loc1-qty","bead-loc2-qty","bead-loc3-qty"].forEach(function(id){
+            document.getElementById(id).value = "";
+        });
+    }
+    function collectBeadPickupData() {
+        var sizes = {
+            "9mm": document.getElementById('bead-9mm').value,
+            "6mm": document.getElementById('bead-6mm').value,
+            "3mm": document.getElementById('bead-3mm').value
+        };
+        var locations = [
+            { name: "名古屋", qty: document.getElementById('bead-loc1-qty').value },
+            { name: "伊賀",   qty: document.getElementById('bead-loc2-qty').value },
+            { name: "9mm詰替", qty: document.getElementById('bead-loc3-qty').value }
+        ];
+        var hasSize = Object.keys(sizes).some(function(k){ return sizes[k] !== ""; });
+        var hasLoc  = locations.some(function(l){ return l.qty !== "" && l.qty != null; });
+        if (!hasSize && !hasLoc) return null; // 何も入力されていなければ保存しない
+        return { sizes: sizes, locations: locations };
+    }
+    async function saveBeadPickup(dateStr, entry) {
+        try {
+            var docRef = fs().doc(db(), 'nippo', dateStr);
+            var snap = await fs().getDoc(docRef);
+            var existing = (snap.exists() && snap.data().beadPickups) ? snap.data().beadPickups : [];
+            existing.push(entry);
+            await fs().setDoc(docRef, { beadPickups: existing }, { merge: true });
+        } catch (e) {
+            console.error("ビーズ引取データの保存に失敗しました", e);
+        }
     }
 
     // --- 出発 → サブメニュー2 ---
@@ -429,8 +511,70 @@
         document.getElementById('sub2-worker').textContent   = session.worker;
         document.getElementById('sub2-distance').textContent = session.departDistance;
         document.getElementById('sub2-return-distance').value = "";
+
+        // ビーズ引取（任意）：入力があれば保存、なくてもそのまま出発
+        var beadEntry = collectBeadPickupData();
+        session.beadPickup = beadEntry;
+        if (beadEntry) {
+            beadEntry.worker = worker;
+            beadEntry.time = now.toLocaleString('ja-JP');
+            saveBeadPickup(session.date, beadEntry); // 保存完了を待たず先に進む
+        }
+        resetBeadPickupFields();
+
         hideAll();
         document.getElementById('screen-sub2').classList.remove('hidden');
+    }
+
+    // --- 出発前メニューで撮影した写真（帰社時に自動削除） ---
+    var sub2PhotoURL = null;
+    function handleSub2Photo(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        if (sub2PhotoURL) URL.revokeObjectURL(sub2PhotoURL);
+        sub2PhotoURL = URL.createObjectURL(file);
+        document.getElementById('sub2-photo-thumb').src = sub2PhotoURL;
+        document.getElementById('sub2-photo-thumb-wrap').style.display = 'block';
+    }
+    function clearSub2Photo() {
+        if (sub2PhotoURL) { URL.revokeObjectURL(sub2PhotoURL); sub2PhotoURL = null; }
+        document.getElementById('sub2-photo-thumb').src = '';
+        document.getElementById('sub2-photo-thumb-wrap').style.display = 'none';
+        document.getElementById('sub2-photo-input').value = '';
+    }
+
+    // --- 日報入力画面：出発時に入力したビーズ引取を確認 ---
+    function showBeadConfirm() {
+        var content = document.getElementById('bead-confirm-content');
+        var bp = session.beadPickup;
+        if (!bp) {
+            content.innerHTML = "本日の出発時にビーズ引取の入力はありませんでした。";
+        } else {
+            var html = "<b>【サイズ別】</b><br>";
+            var sizeLabels = ["9mm","6mm","3mm"];
+            var hasSize = false;
+            sizeLabels.forEach(function(s){
+                if (bp.sizes && bp.sizes[s] !== "") {
+                    html += s + "：" + bp.sizes[s] + "<br>";
+                    hasSize = true;
+                }
+            });
+            if (!hasSize) html += "（入力なし）<br>";
+            html += "<b>【引取先別】</b><br>";
+            var hasLoc = false;
+            (bp.locations || []).forEach(function(l){
+                if (l.qty !== "" && l.qty != null) {
+                    html += l.name + "：" + l.qty + "<br>";
+                    hasLoc = true;
+                }
+            });
+            if (!hasLoc) html += "（入力なし）";
+            content.innerHTML = html;
+        }
+        document.getElementById('bead-confirm-box').classList.remove('hidden');
+    }
+    function hideBeadConfirm() {
+        document.getElementById('bead-confirm-box').classList.add('hidden');
     }
 
     // --- 日報入力へ ---
@@ -459,6 +603,7 @@
         document.getElementById('extra2').value = "";
         document.getElementById('extra3').value = "";
         document.getElementById('notes').value = "";
+        hideBeadConfirm();
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 function(p) { latitude = p.coords.latitude; longitude = p.coords.longitude; },
@@ -535,7 +680,8 @@
         }
         await saveNippoData(session.date, dataArray);
         alert("お疲れ様でした！\n走行距離："+travelDist+" km\n作業時間："+workHoursStr);
-        session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null };
+        clearSub2Photo();
+        session = { date:"", dateJa:"", worker:"", departDistance:"", departTime:null, beadPickup:null };
         showScreen('menu');
     }
 
