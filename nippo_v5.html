@@ -11,6 +11,7 @@
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
       import { getFirestore, doc, getDoc, setDoc, collection, getDocs, addDoc, deleteDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+      import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyC3CLq2Uh4PL7BSvvGys0ANM52e3czA1zU",
@@ -23,10 +24,33 @@
 
       const app = initializeApp(firebaseConfig);
       const db = getFirestore(app);
+      const auth = getAuth(app);
       window._db = db;
+      window._auth = auth;
       window._fs = { doc, getDoc, setDoc, collection, getDocs, addDoc, deleteDoc, query, where, orderBy };
       window._firebaseReady = true;
       document.dispatchEvent(new Event('firebaseReady'));
+
+      setPersistence(auth, browserLocalPersistence).catch(function(e){ console.error(e); });
+
+      window._doLogin = function(email, password) {
+        return signInWithEmailAndPassword(auth, email, password);
+      };
+
+      onAuthStateChanged(auth, function(user) {
+        var overlay = document.getElementById('login-overlay');
+        var errEl = document.getElementById('login-error');
+        if (user) {
+          if (overlay) overlay.style.display = 'none';
+          if (errEl) errEl.textContent = '';
+          if (!window._authInitDone) {
+            window._authInitDone = true;
+            document.dispatchEvent(new Event('authReady'));
+          }
+        } else {
+          if (overlay) overlay.style.display = 'flex';
+        }
+      });
     </script>
     <style>
         body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; text-align: center; }
@@ -102,6 +126,19 @@
     </style>
 </head>
 <body>
+
+<!-- ログイン画面（未ログイン時は最前面に表示され、アプリ全体を隠す） -->
+<div id="login-overlay" style="position:fixed; inset:0; background:#f5f6f8; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px;">
+    <h1 style="margin-bottom:20px;">ログイン</h1>
+    <input type="email" id="login-email" placeholder="メールアドレス" autocomplete="username"
+           style="width:80%; max-width:320px; padding:12px; font-size:16px; margin-bottom:10px; border:1px solid #ccc; border-radius:8px;">
+    <input type="password" id="login-password" placeholder="パスワード" autocomplete="current-password"
+           style="width:80%; max-width:320px; padding:12px; font-size:16px; margin-bottom:14px; border:1px solid #ccc; border-radius:8px;"
+           onkeydown="if(event.key==='Enter'){doLogin();}">
+    <button class="btn-blue" style="width:80%; max-width:320px;" onclick="doLogin()">ログイン</button>
+    <p id="login-error" style="color:#d33; margin-top:12px; font-size:14px;"></p>
+</div>
+
 
 <!-- 撮影写真プレビュー（帰社ボタンを押すまで画面右上に固定表示） -->
 <div id="sub2-photo-thumb-wrap" style="display:none; position:fixed; top:12px; right:12px; z-index:1000;">
@@ -1066,11 +1103,23 @@
         showScreen('menu');
     }
 
-    // Firebase準備完了後に起動
-    if (window._firebaseReady) {
+    // ログイン処理
+    function doLogin() {
+        var email = document.getElementById('login-email').value.trim();
+        var pass = document.getElementById('login-password').value;
+        var errEl = document.getElementById('login-error');
+        errEl.textContent = "";
+        if (!email || !pass) { errEl.textContent = "メールアドレスとパスワードを入力してください。"; return; }
+        window._doLogin(email, pass).catch(function(e) {
+            errEl.textContent = "ログインに失敗しました：" + e.message;
+        });
+    }
+
+    // ログイン完了後（authReady）にアプリを起動
+    if (window._authInitDone) {
         initApp();
     } else {
-        document.addEventListener('firebaseReady', initApp);
+        document.addEventListener('authReady', initApp);
     }
 
     // --- Gmail クライアントID保存 ---
@@ -1095,17 +1144,27 @@
         var name = document.getElementById('new-customer-input').value.trim();
         if (!name) { alert("顧客名を入力してください。"); return; }
         if (_customerCache.some(function(c){ return c.name === name; })) { alert("すでに登録されています。"); return; }
-        await fs().addDoc(fs().collection(db(), 'customers'), { name: name });
-        document.getElementById('new-customer-input').value = "";
-        await loadCustomers();
-        renderCustomerList();
+        try {
+            await fs().addDoc(fs().collection(db(), 'customers'), { name: name });
+            document.getElementById('new-customer-input').value = "";
+            await loadCustomers();
+            renderCustomerList();
+        } catch (e) {
+            console.error(e);
+            alert("追加に失敗しました：" + e.message);
+        }
     }
     async function deleteCustomer(index) {
         var c = _customerCache[index];
         if (!confirm(c.name + " を削除しますか？")) return;
-        await fs().deleteDoc(fs().doc(db(), 'customers', c.id));
-        await loadCustomers();
-        renderCustomerList();
+        try {
+            await fs().deleteDoc(fs().doc(db(), 'customers', c.id));
+            await loadCustomers();
+            renderCustomerList();
+        } catch (e) {
+            console.error(e);
+            alert("削除に失敗しました：" + e.message);
+        }
     }
     function renderCustomerList() {
         var container = document.getElementById('customer-list-view');
@@ -1135,19 +1194,29 @@
         var name = document.getElementById('new-worker-input').value.trim();
         if (!name) { alert("名前を入力してください。"); return; }
         if (_workerCache.some(function(w){ return w.name === name; })) { alert("すでに登録されています。"); return; }
-        await fs().addDoc(fs().collection(db(), 'workers'), { name: name });
-        document.getElementById('new-worker-input').value = "";
-        await loadWorkers();
-        renderWorkerList();
-        refreshWorkerDropdown();
+        try {
+            await fs().addDoc(fs().collection(db(), 'workers'), { name: name });
+            document.getElementById('new-worker-input').value = "";
+            await loadWorkers();
+            renderWorkerList();
+            refreshWorkerDropdown();
+        } catch (e) {
+            console.error(e);
+            alert("追加に失敗しました：" + e.message);
+        }
     }
     async function deleteWorker(index) {
         var w = _workerCache[index];
         if (!confirm(w.name + " を削除しますか？")) return;
-        await fs().deleteDoc(fs().doc(db(), 'workers', w.id));
-        await loadWorkers();
-        renderWorkerList();
-        refreshWorkerDropdown();
+        try {
+            await fs().deleteDoc(fs().doc(db(), 'workers', w.id));
+            await loadWorkers();
+            renderWorkerList();
+            refreshWorkerDropdown();
+        } catch (e) {
+            console.error(e);
+            alert("削除に失敗しました：" + e.message);
+        }
     }
     function renderWorkerList() {
         var container = document.getElementById('worker-list-view');
